@@ -15,7 +15,7 @@
 // Bactracking function:
 ///
 bool bt(int n, int d, int B, vector<int> &p, vector<int> &w, vector<int> &c, vector<int> &sol, int t){
-	return false;
+  return false;
 }
 
 struct User {
@@ -119,11 +119,17 @@ bool bnb(int n, int d, int B, vector<int> &p, vector<int> &w, vector<int> &c, ve
     users[i].order = i;
   }
 
+  // Sort only by ratio price per width
+  if( (B/d) < 50)
+    sort(users.begin(), users.end(), cmp);
+  else{
+
   // Sort first by class
   sort(users.begin(), users.end(), cmp2);
 
   // Sort each class using price per width
   sort_classes(users, n);
+  }
 
   // First node (before any user)
   u.width = 0;
@@ -141,6 +147,7 @@ bool bnb(int n, int d, int B, vector<int> &p, vector<int> &w, vector<int> &c, ve
     // If time is over, return false
     time (&end);
     dif = (int) difftime (end,start);
+
     if(t != 0 && dif >= t) {
       return false;
     }
