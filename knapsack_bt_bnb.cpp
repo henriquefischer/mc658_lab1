@@ -29,74 +29,84 @@ struct Node {
   int step;
   int width;
   int price;
-  int current_class;
-  float bound;
+  float upper_bound;
+  vector<int> classes;
   vector<int> user;
 };
 
 // Sort per ratio (price/width)
-bool cmp(User a, User b) {
-  double price_per_width1 = (double) a.p / a.w;
-  double price_per_width2 = (double) b.p / b.w;
+bool cmp(User first, User second) {
+  double price_per_width1 = (double) first.p / first.w;
+  double price_per_width2 = (double) second.p / second.w;
 
   return price_per_width1 > price_per_width2;
 }
 
-// Function to sort the the classes per ratio
-void sort_classes(vector<User> &users, int n) {
-  int i;
-  int begin, end;
-  begin = 0;
-
-  for(i=0; i < n; i++) {
-    if(users[i].c != users[i-1].c) {
-      sort(users.begin() + begin, users.begin() + i, cmp);
-      begin = i;
-    }
-  }
-  sort(users.begin() + begin, users.begin() + i, cmp);
+// Add a class to the node
+void add_class_to_node(Node &v, int x) {
+  if(find(v.classes.begin(), v.classes.end(), x) != v.classes.end())
+    return;
+  else
+    v.classes.push_back(x);
 }
 
-// Sort per class
-bool cmp2(User a, User b) {
-  return a.c < b.c;
+// Check if a class has not already been added to the node
+bool is_new_class(Node v, int x) {
+  if(find(v.classes.begin(), v.classes.end(), x) != v.classes.end()) {
+    return false;
+  }
+  else{
+    return true;
+  }
 }
 
 // Calculate the upper bound
-float bound(Node u, vector<User> &users, int n, int d, int B) {
-  float bound = u.price;
+float find_upper_bound(Node u, vector<User> &users, int n, int d, int B) {
+  float upper_bound = u.price;
   float total_width = u.width;
   int partial = 0;
   int i;
-  int last_class = u.current_class;
+  Node v;
+  v.classes = u.classes;
+
+  // If node is already over the size of the bag
+  // Set upper bound to zero
+  if(u.width > B)
+    return 0;
 
   // Check other steps in the tree
   for(i = u.step + 1; i < n; i++) {
 
-    // If user is from another class
+    // If user is from a new class
     // add separator with width 'd'
-    if(last_class != -1 && users[i].c != last_class) {
-      total_width += d;
+    if(!v.classes.empty() && is_new_class(v, users[i].c)) {
+      if(total_width + d < B){
+        total_width += d;
+        add_class_to_node(v, users[i].c);
+      }
+      else {
+        break;
+      }
     }
-    last_class = users[i].c;
 
-    // Add user
+    // Verify it a new user can be added without
+    // oversizing the width
     if(users[i].w + total_width > B) {
       partial = 1;
       break;
     }
     else {
       total_width += users[i].w;
-      bound += users[i].p;
+      upper_bound += users[i].p;
     }
   }
 
   // Check if last one can be partially added
   if(partial) {
-    bound += users[i].p * (B - total_width) / users[i].w;
+    upper_bound += users[i].p * (B - total_width) / users[i].w;
   }
 
-  return bound;
+  return upper_bound;
 }
 
 ///
@@ -107,10 +117,16 @@ bool bnb(int n, int d, int B, vector<int> &p, vector<int> &w, vector<int> &c, ve
   vector<Node> nodes;
   vector<Node> solution;
   vector<int> track;
-  int dif;
   Node u, v;
+  float best_bound = 0;
+
+  // Timer
+  time_t start,end;
+  time (&start);
+  int dif;
 
 
+  // Save all values in a User struct
   for(int i = 0; i < n; i++) {
     users.push_back(User());
     users[i].p = p[i];
@@ -119,31 +135,20 @@ bool bnb(int n, int d, int B, vector<int> &p, vector<int> &w, vector<int> &c, ve
     users[i].order = i;
   }
 
-  // Sort only by ratio price per width
-  if( (B/d) < 50)
-    sort(users.begin(), users.end(), cmp);
-  else{
-
-  // Sort first by class
-  sort(users.begin(), users.end(), cmp2);
-
-  // Sort each class using price per width
-  sort_classes(users, n);
-  }
+  // Sort by ratio (price per width)
+  sort(users.begin(), users.end(), cmp);
 
   // First node (before any user)
+  // This is the root of the tree
   u.width = 0;
   u.step = -1;
   u.price = 0;
-  u.current_class = -1;
 
-  // Timer
-  time_t start,end;
-  time (&start);
-
+  // Push the root node to the tree
   int max_price = 0;
   nodes.push_back(u);
   while(!nodes.empty()) {
+
     // If time is over, return false
     time (&end);
     dif = (int) difftime (end,start);
@@ -152,28 +157,28 @@ bool bnb(int n, int d, int B, vector<int> &p, vector<int> &w, vector<int> &c, ve
       return false;
     }
 
-    // get root
+    // Get node
     u = nodes.back();
     nodes.pop_back();
 
-    // Keep going only if u is not a leaf node
+    // If node U is not a leaf
+    // check the next users
     if(u.step < n - 1) {
       // now checking next users
       v.step = u.step + 1;
       v.price = u.price + users[v.step].p;
-      v.current_class = users[v.step].c;
+      v.classes = u.classes;
       v.user = u.user;
 
       // If class of next user is different
       // add a separator with d width
-      if(u.current_class != -1 && v.current_class != u.current_class) {
+      if(!u.classes.empty() && is_new_class(v, users[v.step].c)) {
         v.width = u.width + users[v.step].w + d;
       }
-      else
+      else{
         v.width = u.width + users[v.step].w;
-
-      // Calculate upper bound
-      v.bound = bound(v, users, n, d, B);
+      }
+      add_class_to_node(v, users[v.step].c);
 
       // If a better solution is found
       // update the lower bound and
@@ -181,12 +186,14 @@ bool bnb(int n, int d, int B, vector<int> &p, vector<int> &w, vector<int> &c, ve
       if(v.width <= B && v.price > max_price) {
         max_price = v.price;
 
-        // save path
+        // save if the users were
+        // added or not in the track vector
         if(u.step != -1)
           track = u.user;
         track.push_back(1);
 
         // update the sol vector
+        // with the new solution
         fill(sol.begin(), sol.end(), 0);
         for(int i=0; i<track.size(); i++) {
           if(track[i]) {
@@ -195,9 +202,11 @@ bool bnb(int n, int d, int B, vector<int> &p, vector<int> &w, vector<int> &c, ve
         }
       }
 
-      // Check if subtree should be searched
+      // Calculate the upper bound
+      v.upper_bound = find_upper_bound(v, users, n, d, B);
+      // And check if subtree should be searched
       v.user.push_back(1);
-      if(v.bound > max_price) {
+      if(v.upper_bound > max_price) {
         nodes.push_back(v);
       }
 
@@ -205,14 +214,14 @@ bool bnb(int n, int d, int B, vector<int> &p, vector<int> &w, vector<int> &c, ve
       // should be searched
       v.width = u.width;
       v.price = u.price;
-      v.current_class = u.current_class;
-      v.bound = bound(v, users, n, d, B);
+      v.classes = u.classes;
+      v.upper_bound = find_upper_bound(v, users, n, d, B);
       v.user.pop_back();
       v.user.push_back(0);
 
       // Add node to subtree if
       // it should be searched
-      if(v.bound > max_price) {
+      if(v.upper_bound > max_price) {
         nodes.push_back(v);
       }
     }
